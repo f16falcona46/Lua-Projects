@@ -65,7 +65,50 @@ function create_window()
 	context.frame = wx.wxFrame(wx.NULL, wx.wxID_ANY, "Test", wx.wxDefaultPosition, wx.wxSize(600, 480), wx.wxDEFAULT_FRAME_STYLE)
 	context.frame:SetMinSize(wx.wxSize(500, 300))
 	context.mainpanel = wx.wxPanel(context.frame, wx.wxID_ANY)
-	--context.frame:SetBackgroundColour(wx.wxSystemSettings.GetColour(wx.wxSYS_COLOUR_WINDOW))
+	
+	initialize_threads(context)
+	
+	local funcs = {}
+	for i=1,10 do
+		funcs[i] = function ()
+				for j=1,3*i*i do
+					for k=1,1000000 do end
+					coroutine.yield()
+				end
+				context.progressbar:SetValue(context.progressbar:GetValue() + 1)
+			end
+	end
+	funcs[11] = function ()
+			local width = 500
+			local height = 500
+			local scale = 40
+			local bitmap = wx.wxBitmap(width, height)
+			local dc = wx.wxMemoryDC()
+			dc:SelectObject(bitmap)
+			dc:SetBackground(wx.wxBLACK_BRUSH)
+			dc:Clear()
+			dc:SetPen(wx.wxGREEN_PEN)
+			for i=0,width,40 do
+				dc:DrawLine(0, i, width, i)
+				dc:DrawLine(i, 0, i, height)
+			end
+			dc:SetPen(wx.wxWHITE_PEN)
+			for i=0,width - 5,5 do
+				dc:DrawLine(i, -scale * math.sin(i / scale) + height / 2, i + 5, -scale * math.sin((i + 5) / scale) + height / 2)
+			end
+			dc:SelectObject(wx.wxNullBitmap)
+			dc:delete()
+			wx.wxImage.AddHandler(wx.wxPNGHandler())
+			--local image = bitmap:ConvertToImage()
+			bitmap:SaveFile("garbage.png", wx.wxBITMAP_TYPE_PNG, wx.NULL)
+			bitmap:delete()
+			context.progressbar:SetValue(context.progressbar:GetValue() + 1)
+		end
+	
+	create_task(context, funcs, function ()
+			context.threadindicator:SetLabel("Threads stopped")
+			wx.wxMessageBox("Done!", "title", wx.wxOK + wx.wxICON_INFORMATION)
+		end)
 	
 	context.timer = wx.wxTimer(context.mainpanel, ID.Timer1)
 	
@@ -83,7 +126,7 @@ function create_window()
 	context.sizer:Add(context.drawpanel, wx.wxGBPosition(0, 4), wx.wxGBSpan(), wx.wxALL + wx.wxEXPAND, 5)
 	context.threadindicator = wx.wxStaticText(context.mainpanel, -1, "Threads running")
 	context.sizer:Add(context.threadindicator, wx.wxGBPosition(2, 0), wx.wxGBSpan(1, 3), wx.wxALL + wx.wxEXPAND, 5)
-	context.progressbar = wx.wxGauge(context.mainpanel, wx.wxID_ANY, 10)
+	context.progressbar = wx.wxGauge(context.mainpanel, wx.wxID_ANY, #funcs)
 	context.sizer:Add(context.progressbar, wx.wxGBPosition(3, 0), wx.wxGBSpan(1, 5), wx.wxALL + wx.wxEXPAND, 5)
 	
 	
@@ -111,27 +154,10 @@ function create_window()
 	context.mainpanel:Connect(ID.Button5, wx.wxEVT_COMMAND_BUTTON_CLICKED, function (event) wx.wxMessageBox("Multispan clicked", "Title", wx.wxOK + wx.wxICON_INFORMATION) end)
 	context.drawpanel:Connect(ID.Panel1, wx.wxEVT_PAINT,
 		create_closure(function (data, event)
-			dc = wx.wxPaintDC(data.drawpanel)
+			local dc = wx.wxPaintDC(data.drawpanel)
 			dc:DrawLine(0, 0, 100, 100)
 			dc:delete()
 		end, { drawpanel = context.drawpanel }))
-	
-	initialize_threads(context)
-	
-	local tasks = {}
-	for i=1,10 do
-		tasks[i] = function ()
-				for j=1,3*i*i do
-					coroutine.yield()
-				end
-				context.progressbar:SetValue(context.progressbar:GetValue() + 1)
-			end
-	end
-	
-	create_task(context, tasks, function ()
-			context.threadindicator:SetLabel("Threads stopped")
-			wx.wxMessageBox("Done!", "title", wx.wxOK + wx.wxICON_INFORMATION)
-		end)
 	
 	context.timer:Start(1000)
 	context.mainpanel:SetSizer(context.sizer)
