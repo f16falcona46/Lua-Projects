@@ -1,3 +1,5 @@
+require("wx")
+
 function create_closure(f, data)
 	return function(...)
 		return f(data, ...)
@@ -8,14 +10,16 @@ function initialize_threads(context)
 	context.threadpool = {}
 	context.currentthread = 1
 	
+	local tasks = {}
 	for i=1,10 do
-		context.threadpool[i] = coroutine.create(function ()
-				for j=1,i + 5 do
+		tasks[i] = function ()
+				for j=1,3*i*i do
 					coroutine.yield()
 				end
 				context.progressbar:SetValue(context.progressbar:GetValue() + 1)
-			end)
+			end
 	end
+	
 	
 	context.mainpanel:Connect(wx.wxID_ANY, wx.wxEVT_IDLE,
 		function (event)
@@ -32,6 +36,35 @@ function initialize_threads(context)
 				context.currentthread = context.currentthread + 1
 			end
 		end)
+	
+	create_task(context, tasks, function ()
+			context.threadindicator:SetLabel("Threads stopped")
+			wx.wxMessageBox("Done!", "title", wx.wxOK + wx.wxICON_INFORMATION)
+		end)
+end
+
+function create_task(context, functions, done_callback)
+	local num_threads = #context.threadpool
+	local num_new_threads = #functions
+	local tasks = {}
+	for i=1,num_new_threads do
+		local c = coroutine.create(functions[i])
+		table.insert(context.threadpool, c)
+		table.insert(tasks, c)
+	end
+	if done_callback ~= nil then
+		table.insert(context.threadpool, coroutine.create(function ()
+				local i = 1
+				while i <= #tasks do
+					if (coroutine.status(tasks[i]) ~= "dead") then
+						coroutine.yield()
+					else
+						i = i + 1
+					end
+				end
+				done_callback()
+			end))
+	end
 end
 
 function create_window()
@@ -61,7 +94,7 @@ function create_window()
 	context.buttoncounter = wx.wxStaticText(context.mainpanel, -1, "Button clicks: 0")
 	context.sizer:Add(context.buttoncounter, wx.wxGBPosition(1, 2), wx.wxGBSpan(), wx.wxALL + wx.wxALIGN_CENTER, 5)
 	context.sizer:Add(wx.wxButton(context.mainpanel, ID.Button5, "MultiSpan", wx.wxDefaultPosition, wx.wxDefaultSize, 0), wx.wxGBPosition(0, 3), wx.wxGBSpan(3, 1), wx.wxALL + wx.wxEXPAND, 5)
-	context.threadindicator = wx.wxStaticText(context.mainpanel, -1, "Current thread: NONE")
+	context.threadindicator = wx.wxStaticText(context.mainpanel, -1, "Threads running")
 	context.sizer:Add(context.threadindicator, wx.wxGBPosition(2, 0), wx.wxGBSpan(1, 3), wx.wxALL + wx.wxEXPAND, 5)
 	context.progressbar = wx.wxGauge(context.mainpanel, wx.wxID_ANY, 10)
 	context.sizer:Add(context.progressbar, wx.wxGBPosition(3, 0), wx.wxGBSpan(1, 4), wx.wxALL + wx.wxEXPAND, 5)
